@@ -406,7 +406,10 @@ const electronAPI = {
     confirmClose: (confirmed: boolean): void => {
       ipcRenderer.send(IPC_CHANNELS.APP_CLOSE_CONFIRM, confirmed);
     },
-    respondCloseRequest: (requestId: string, payload: { dirtyPaths: string[] }): void => {
+    respondCloseRequest: (
+      requestId: string,
+      payload: { confirmed: boolean; dirtyPaths: string[] }
+    ): void => {
       ipcRenderer.send(IPC_CHANNELS.APP_CLOSE_RESPONSE, requestId, payload);
     },
     onCloseSaveRequest: (
