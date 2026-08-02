@@ -7,6 +7,7 @@ import { Terminal } from '@xterm/xterm';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { defaultDarkTheme, getXtermTheme } from '@/lib/ghosttyTheme';
 import { matchesKeybinding } from '@/lib/keybinding';
+import { stripTerminalColorQueryResponses } from '@/lib/terminalInputFilter';
 import { useNavigationStore } from '@/stores/navigation';
 import { useSettingsStore } from '@/stores/settings';
 import '@xterm/xterm/css/xterm.css';
@@ -52,6 +53,7 @@ export interface UseXtermOptions {
   onSplit?: () => void;
   onMerge?: () => void;
   canMerge?: boolean;
+  filterTerminalColorQueryResponses?: boolean;
 }
 
 export interface UseXtermResult {
@@ -130,6 +132,7 @@ export function useXterm({
   onSplit,
   onMerge,
   canMerge = false,
+  filterTerminalColorQueryResponses = false,
 }: UseXtermOptions): UseXtermResult {
   const containerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
@@ -683,10 +686,25 @@ export function useXterm({
       });
       exitCleanupRef.current = exitCleanup;
 
+      try {
+        await window.electronAPI.terminal.activate(ptyId);
+      } catch (error) {
+        cleanup();
+        exitCleanup();
+        cleanupRef.current = null;
+        exitCleanupRef.current = null;
+        ptyIdRef.current = null;
+        await window.electronAPI.terminal.destroy(ptyId).catch(() => {});
+        throw error;
+      }
+
       // Handle input
       terminal.onData((data) => {
-        if (ptyIdRef.current) {
-          window.electronAPI.terminal.write(ptyIdRef.current, data);
+        const ptyInput = filterTerminalColorQueryResponses
+          ? stripTerminalColorQueryResponses(data)
+          : data;
+        if (ptyIdRef.current && ptyInput.length > 0) {
+          window.electronAPI.terminal.write(ptyIdRef.current, ptyInput);
         }
       });
 
@@ -700,7 +718,15 @@ export function useXterm({
       terminal.writeln(`\x1b[31mFailed to start terminal.\x1b[0m`);
       terminal.writeln(`\x1b[33mError: ${error}\x1b[0m`);
     }
-  }, [cwd, command, shellConfig, commandKey, terminalRenderer, useWindowsConptyCompatibility]);
+  }, [
+    cwd,
+    command,
+    shellConfig,
+    commandKey,
+    terminalRenderer,
+    useWindowsConptyCompatibility,
+    filterTerminalColorQueryResponses,
+  ]);
 
   useEffect(() => {
     const shouldActivate = isActive || initialCommandRef.current;
